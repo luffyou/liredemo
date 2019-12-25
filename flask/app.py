@@ -4,8 +4,13 @@ import base64
 import jpype # pip install jpype1
 import os
 import time
+from PIL import Image
+from io import BytesIO
 
 ALLOWED_EXTENSIONS = ['jpg', 'png', 'bmp', 'jpeg']
+RES_IMG_SIZE = 256
+RES_IMG_ROW = 3
+RES_IMG_COL = 2
 
 class JavaServer(object):
     root_dir = "../"
@@ -46,8 +51,7 @@ def img_upload():
     name_sub = req_file.filename.split('.')[1].lower()
     if name_sub not in ALLOWED_EXTENSIONS:
         res_str = "request image error: format not support"
-        print(res_str)
-        return res_str 
+        return jsonify({'status':res_str }) 
 
     img_name = 'static/upload.{}'.format(name_sub)
     req_file.save(img_name)
@@ -55,16 +59,30 @@ def img_upload():
     start_time = time.time()
     res_jstr = js.func(img_name) # <class 'jpype._jclass.java.lang.String[]'> 
     print("api cost: ", time.time()-start_time)
-    
-    html_str = '''''' # None
-    for idx, res_path in enumerate(res_jstr):
-        # print(res_path)
-        img_f = open(res_path, 'rb')
-        bs64data = base64.b64encode(img_f.read()).decode()
-        img_f.close()
-        html_str += '''<img src="data:image/jpeg;base64,{}" style="width:100%;height:100%;"/> <br/>'''.format(bs64data)
-    return html_str
+    post_time = time.time()
 
+    # html_str = '''''' # None
+    # for idx, res_path in enumerate(res_jstr):
+    #     # print(res_path)
+    #     img_f = open(res_path, 'rb')
+    #     bs64data = base64.b64encode(img_f.read()).decode()
+    #     img_f.close()
+    #     html_str += '''<img src="data:image/jpeg;base64,{}" style="width:100%;height:100%;"/> <br/>'''.format(bs64data)
+    # print("post cost: ", time.time()-post_time)
+    # return jsonify({'viz': html_str, 'status':str(time.time()-start_time)})
+
+    to_image = Image.new('RGB', (RES_IMG_COL * RES_IMG_SIZE, RES_IMG_ROW * RES_IMG_SIZE))
+    for y in range(1, RES_IMG_ROW + 1):
+        for x in range(1, RES_IMG_COL + 1):
+            from_image = Image.open(res_jstr[RES_IMG_COL * (y - 1) + x - 1]).resize((RES_IMG_SIZE, RES_IMG_SIZE),Image.ANTIALIAS)
+            to_image.paste(from_image, ((x - 1) * RES_IMG_SIZE, (y - 1) * RES_IMG_SIZE))
+    output_buffer = BytesIO()
+    to_image.save(output_buffer, format='JPEG')
+    byte_data = output_buffer.getvalue()
+    bs64data = base64.b64encode(byte_data).decode()
+    html_str = '''<img src="data:image/jpeg;base64,{}" style="width:100%;height:100%;"/> <br/>'''.format(bs64data)
+    print("post cost: ", time.time()-post_time)
+    return jsonify({'viz': html_str, 'status':str(time.time()-start_time)})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001 , threaded=True)
